@@ -25,10 +25,9 @@ const STORAGE_KEY = "ssp_session_v1";
  * - use regex, not DOM APIs
  */
 function sanitizeUsername(input) {
-  // TODO: implement
-  return "";
-
-  
+    const value = String(input || "");
+    const safeValue = value.replace(/[^A-Za-z0-9_-]/g, "_");
+    return safeValue.slice(0, 20);
 }
 
 /**
@@ -40,7 +39,15 @@ function sanitizeUsername(input) {
  * - MUST use textContent (not innerHTML)
  */
 function renderNotifications(listEl, notifications) {
-  // TODO: implement
+    if (!listEl) return;
+
+    listEl.textContent = "";
+
+    for (let i = 0; i < notifications.length; i += 1) {
+        const item = document.createElement("li");
+        item.textContent = notifications[i];
+        listEl.appendChild(item);
+    }
 }
 
 /** -----------------------------
@@ -62,8 +69,38 @@ function renderNotifications(listEl, notifications) {
  *   - notifications: array of strings
  */
 function parseProfileJson(jsonText) {
-  // TODO: implement
-  return null;
+    try {
+        const profile = JSON.parse(jsonText);
+
+        if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+            return null;
+        }
+
+        if (typeof profile.displayName !== "string") {
+            return null;
+        }
+
+        if (profile.role !== "user" && profile.role !== "admin") {
+            return null;
+        }
+
+        if (!Array.isArray(profile.notifications)) {
+            return null;
+        }
+
+        for (let i = 0; i < profile.notifications.length; i += 1) {
+            if (typeof profile.notifications[i] !== "string") {
+                return null;
+            }
+        }
+
+        return profile;
+    } catch (error) {
+        if (error instanceof SyntaxError) {
+            return null;
+        }
+        throw error;
+    }
 }
 
 /** -----------------------------
@@ -80,8 +117,18 @@ function parseProfileJson(jsonText) {
  * - Return parsed profile object or null
  */
 async function fetchUserProfile(url) {
-  // TODO: implement
-  return null;
+    try {
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            return null;
+        }
+
+        const jsonText = await response.text();
+        return parseProfileJson(jsonText);
+    } catch (_) {
+        return null;
+    }
 }
 
 /** -----------------------------
@@ -99,7 +146,12 @@ async function fetchUserProfile(url) {
  * - Must NOT store notifications (assume those are dynamic)
  */
 function saveSessionToStorage(profile) {
-  // TODO: implement
+    const session = {
+        displayName: profile.displayName,
+        role: profile.role
+    };
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 }
 
 /**
@@ -109,8 +161,34 @@ function saveSessionToStorage(profile) {
  * - Return object { displayName, role } if valid
  */
 function loadSessionFromStorage() {
-  // TODO: implement
-  return null;
+    const raw = localStorage.getItem(STORAGE_KEY);
+
+    if (!raw) {
+        return null;
+    }
+
+    try {
+        const session = JSON.parse(raw);
+
+        if (!session || typeof session !== "object" || Array.isArray(session)) {
+            return null;
+        }
+
+        if (typeof session.displayName !== "string") {
+            return null;
+        }
+
+        if (session.role !== "user" && session.role !== "admin") {
+            return null;
+        }
+
+        return {
+            displayName: session.displayName,
+            role: session.role
+        };
+    } catch (_) {
+        return null;
+    }
 }
 
 /** -----------------------------
@@ -128,8 +206,15 @@ function loadSessionFromStorage() {
  * client-side logic can be manipulated; real authorization is server-side.
  */
 function computeAccessStatus(profile) {
-  // TODO: implement
-  return "DENIED";
+    if (!profile || typeof profile !== "object") {
+        return "DENIED";
+    }
+
+    if (profile.role === "admin") {
+        return "GRANTED";
+    }
+
+    return "DENIED";
 }
 
 /** -----------------------------
@@ -138,48 +223,48 @@ function computeAccessStatus(profile) {
  */
 
 function setText(id, value) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = value;
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
 }
 
 function setStatusText(value) {
-  const el = document.getElementById("accessStatus");
-  if (!el) return;
+    const el = document.getElementById("accessStatus");
+    if (!el) return;
 
-  el.textContent = value;
-  el.classList.remove("ok", "bad");
-  if (value === "GRANTED") el.classList.add("ok");
-  if (value === "DENIED") el.classList.add("bad");
+    el.textContent = value;
+    el.classList.remove("ok", "bad");
+    if (value === "GRANTED") el.classList.add("ok");
+    if (value === "DENIED") el.classList.add("bad");
 }
 
 function renderDebug(obj) {
-  const el = document.getElementById("debug");
-  if (!el) return;
-  el.textContent = JSON.stringify(obj, null, 2);
+    const el = document.getElementById("debug");
+    if (!el) return;
+    el.textContent = JSON.stringify(obj, null, 2);
 }
 
 /**
  * Apply a full profile to the UI safely.
  */
 function applyProfileToUI(profile) {
-  if (!profile) {
-    setText("displayName", "UNDEFINED");
-    setText("role", "UNDEFINED");
-    setStatusText("UNDEFINED");
-    renderNotifications(document.getElementById("notifications"), []);
-    renderDebug({ note: "No profile loaded." });
-    return;
-  }
+    if (!profile) {
+        setText("displayName", "UNDEFINED");
+        setText("role", "UNDEFINED");
+        setStatusText("UNDEFINED");
+        renderNotifications(document.getElementById("notifications"), []);
+        renderDebug({ note: "No profile loaded." });
+        return;
+    }
 
-  setText("displayName", profile.displayName);
-  setText("role", profile.role);
-  setStatusText(computeAccessStatus(profile));
+    setText("displayName", profile.displayName);
+    setText("role", profile.role);
+    setStatusText(computeAccessStatus(profile));
 
-  renderNotifications(document.getElementById("notifications"), profile.notifications);
-  renderDebug({
-    storedSession: loadSessionFromStorage(),
-    note: "UI updated from profile (client-side)."
-  });
+    renderNotifications(document.getElementById("notifications"), profile.notifications);
+    renderDebug({
+        storedSession: loadSessionFromStorage(),
+        note: "UI updated from profile (client-side)."
+    });
 }
 
 /**
@@ -194,85 +279,85 @@ function applyProfileToUI(profile) {
  *   - Reset: clear everything and set UNDEFINED
  */
 function initUI() {
-  // If this file is required from Jest tests, document may not exist:
-  if (typeof document === "undefined") return;
+    // If this file is required from Jest tests, document may not exist:
+    if (typeof document === "undefined") return;
 
-  const loginBtn = document.getElementById("loginBtn");
-  const logoutBtn = document.getElementById("logoutBtn");
-  const loadProfileBtn = document.getElementById("loadProfileBtn");
-  const loadFromStorageBtn = document.getElementById("loadFromStorageBtn");
-  const resetBtn = document.getElementById("resetBtn");
+    const loginBtn = document.getElementById("loginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const loadProfileBtn = document.getElementById("loadProfileBtn");
+    const loadFromStorageBtn = document.getElementById("loadFromStorageBtn");
+    const resetBtn = document.getElementById("resetBtn");
 
-  const usernameInput = document.getElementById("usernameInput");
+    const usernameInput = document.getElementById("usernameInput");
 
-  if (loginBtn) {
-    loginBtn.addEventListener("click", () => {
-      const raw = usernameInput ? usernameInput.value : "";
-      const safe = sanitizeUsername(raw);
+    if (loginBtn) {
+        loginBtn.addEventListener("click", () => {
+            const raw = usernameInput ? usernameInput.value : "";
+            const safe = sanitizeUsername(raw);
 
-      const profile = {
-        displayName: safe || "UNDEFINED",
-        role: "user",
-        notifications: ["Logged in locally (demo)."]
-      };
+            const profile = {
+                displayName: safe || "UNDEFINED",
+                role: "user",
+                notifications: ["Logged in locally (demo)."]
+            };
 
-      saveSessionToStorage(profile);
-      applyProfileToUI(profile);
-    });
-  }
+            saveSessionToStorage(profile);
+            applyProfileToUI(profile);
+        });
+    }
 
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", () => {
-      localStorage.removeItem(STORAGE_KEY);
-      applyProfileToUI(null);
-    });
-  }
+    if (logoutBtn) {
+        logoutBtn.addEventListener("click", () => {
+            localStorage.removeItem(STORAGE_KEY);
+            applyProfileToUI(null);
+        });
+    }
 
-  if (loadProfileBtn) {
-    loadProfileBtn.addEventListener("click", async () => {
-      // In a real app this would be a real endpoint.
-      const profile = await fetchUserProfile("/mock/profile.json");
-      if (profile) {
-        saveSessionToStorage(profile);
-      }
-      applyProfileToUI(profile);
-    });
-  }
+    if (loadProfileBtn) {
+        loadProfileBtn.addEventListener("click", async() => {
+            // In a real app this would be a real endpoint.
+            const profile = await fetchUserProfile("/mock/profile.json");
+            if (profile) {
+                saveSessionToStorage(profile);
+            }
+            applyProfileToUI(profile);
+        });
+    }
 
-  if (loadFromStorageBtn) {
-    loadFromStorageBtn.addEventListener("click", () => {
-      const session = loadSessionFromStorage();
-      if (!session) {
-        applyProfileToUI(null);
-        return;
-      }
-      // Minimal profile reconstructed from storage
-      const profile = {
-        displayName: session.displayName,
-        role: session.role,
-        notifications: ["Loaded from storage (no server validation)."]
-      };
-      applyProfileToUI(profile);
-    });
-  }
+    if (loadFromStorageBtn) {
+        loadFromStorageBtn.addEventListener("click", () => {
+            const session = loadSessionFromStorage();
+            if (!session) {
+                applyProfileToUI(null);
+                return;
+            }
+            // Minimal profile reconstructed from storage
+            const profile = {
+                displayName: session.displayName,
+                role: session.role,
+                notifications: ["Loaded from storage (no server validation)."]
+            };
+            applyProfileToUI(profile);
+        });
+    }
 
-  if (resetBtn) {
-    resetBtn.addEventListener("click", () => {
-      localStorage.removeItem(STORAGE_KEY);
-      if (usernameInput) usernameInput.value = "";
-      applyProfileToUI(null);
-    });
-  }
+    if (resetBtn) {
+        resetBtn.addEventListener("click", () => {
+            localStorage.removeItem(STORAGE_KEY);
+            if (usernameInput) usernameInput.value = "";
+            applyProfileToUI(null);
+        });
+    }
 
-  // Start in UNDEFINED state
-  applyProfileToUI(null);
+    // Start in UNDEFINED state
+    applyProfileToUI(null);
 }
 
 // Auto-run in the browser
 try {
-  initUI();
+    initUI();
 } catch (_) {
-  // ignore for node test env
+    // ignore for node test env
 }
 
 /** -----------------------------
@@ -280,12 +365,12 @@ try {
  * -----------------------------
  */
 module.exports = {
-  sanitizeUsername,
-  renderNotifications,
-  parseProfileJson,
-  fetchUserProfile,
-  saveSessionToStorage,
-  loadSessionFromStorage,
-  computeAccessStatus,
-  STORAGE_KEY
+    sanitizeUsername,
+    renderNotifications,
+    parseProfileJson,
+    fetchUserProfile,
+    saveSessionToStorage,
+    loadSessionFromStorage,
+    computeAccessStatus,
+    STORAGE_KEY
 };
